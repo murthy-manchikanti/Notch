@@ -26,12 +26,14 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
 
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out repository
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Check toolchain
         run: |
+          set -euo pipefail
           xcodebuild -version
           xcrun swift --version
 
@@ -58,14 +60,22 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
 
     steps:
-      - uses: actions/checkout@v7
+      - name: Check out repository
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Check toolchain
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun swift --version
 
       - name: Build universal app
         run: |
           set -euo pipefail
           mkdir -p ci-logs
+
           xcodebuild \
             -project Notch.xcodeproj \
             -scheme Notch \
@@ -80,21 +90,53 @@ jobs:
       - name: Verify app contents and architectures
         run: |
           set -euo pipefail
-          app_path=".build/ci/Build/Products/Release/Notch.app"
-          adapter_path="$app_path/Contents/Frameworks/MediaRemoteAdapter.framework/MediaRemoteAdapter"
+          trap 'echo "::error::Verification failed at line $LINENO: $BASH_COMMAND"' ERR
 
-          test -x "$app_path/Contents/MacOS/Notch"
-          test -f "$adapter_path"
-          test -f "$app_path/Contents/Resources/mediaremote-adapter.pl"
-          test -f "$app_path/Contents/Resources/LICENSE"
-          test -f "$app_path/Contents/Resources/Assets.car"
-          test -f "$app_path/Contents/Resources/AppIcon.icns"
+          mkdir -p ci-logs
+          exec > >(tee ci-logs/verification.log) 2>&1
+
+          app_path=".build/ci/Build/Products/Release/Notch.app"
+          executable="$app_path/Contents/MacOS/Notch"
+          resources="$app_path/Contents/Resources"
+          adapter="$app_path/Contents/Frameworks/MediaRemoteAdapter.framework/MediaRemoteAdapter"
+
+          require_file() {
+            if [[ ! -f "$1" ]]; then
+              echo "::error::Required file is missing: $1"
+              exit 1
+            fi
+            echo "Found: $1"
+          }
+
+          require_file "$executable"
+          require_file "$adapter"
+          require_file "$resources/mediaremote-adapter.pl"
+          require_file "$resources/LICENSE"
+          require_file "$resources/Assets.car"
+          require_file "$resources/AppIcon.icns"
+          require_file "$app_path/Contents/Info.plist"
+
+          if [[ ! -x "$executable" ]]; then
+            echo "::error::Notch binary is not executable."
+            exit 1
+          fi
 
           plutil -lint "$app_path/Contents/Info.plist"
-          lipo "$app_path/Contents/MacOS/Notch" \
-            -verify_arch arm64 x86_64
-          lipo "$adapter_path" \
-            -verify_arch arm64 x86_64
+
+          for binary in "$executable" "$adapter"; do
+            echo "Architectures in $binary:"
+            xcrun lipo "$binary" -archs
+
+            for arch in arm64 x86_64; do
+              if ! xcrun lipo "$binary" -verify_arch "$arch"; then
+                echo "::error::Missing architecture $arch in $binary"
+                exit 1
+              fi
+              echo "Verified: $arch"
+            done
+          done
+
+          echo "All app contents and architecture checks passed."
 
       - name: Upload failure logs
         if: failure()
@@ -117,6 +159,8 @@ jobs:
     steps:
       - name: Report results
         run: |
+          set -euo pipefail
+
           {
             echo "## Notch CI results"
             echo ""
@@ -126,7 +170,8 @@ jobs:
             echo "| Release build and packaging | $BUILD_RESULT |"
             echo ""
             echo "Live playback, Bluetooth, Accessibility permissions,"
-            echo "memory leaks, and visual placement require Mac testing."
+            echo "memory behavior, and visual placement require Mac testing."
+            echo "Signing and notarization are not tested by this workflow."
           } >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$TEST_RESULT" != "success" ||
