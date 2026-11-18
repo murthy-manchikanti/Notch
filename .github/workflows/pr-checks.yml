@@ -1,0 +1,138 @@
+name: Notch CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notch-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  tests:
+    name: Regression tests
+    runs-on: xcode-27
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check toolchain
+        run: |
+          xcodebuild -version
+          xcrun swift --version
+
+      - name: Run regression tests
+        run: |
+          set -euo pipefail
+          mkdir -p ci-logs
+          zsh scripts/test.sh 2>&1 | tee ci-logs/tests.log
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: regression-test-logs
+          path: ci-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  build:
+    name: Release build and packaging checks
+    runs-on: xcode-27
+    timeout-minutes: 25
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.2.app/Contents/Developer
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build universal app
+        run: |
+          set -euo pipefail
+          mkdir -p ci-logs
+          xcodebuild \
+            -project Notch.xcodeproj \
+            -scheme Notch \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath .build/ci \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee ci-logs/build.log
+
+      - name: Verify app contents and architectures
+        run: |
+          set -euo pipefail
+          app_path=".build/ci/Build/Products/Release/Notch.app"
+          adapter_path="$app_path/Contents/Frameworks/MediaRemoteAdapter.framework/MediaRemoteAdapter"
+
+          test -x "$app_path/Contents/MacOS/Notch"
+          test -f "$adapter_path"
+          test -f "$app_path/Contents/Resources/mediaremote-adapter.pl"
+          test -f "$app_path/Contents/Resources/LICENSE"
+          test -f "$app_path/Contents/Resources/Assets.car"
+          test -f "$app_path/Contents/Resources/AppIcon.icns"
+
+          plutil -lint "$app_path/Contents/Info.plist"
+          lipo "$app_path/Contents/MacOS/Notch" \
+            -verify_arch arm64 x86_64
+          lipo "$adapter_path" \
+            -verify_arch arm64 x86_64
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-build-logs
+          path: ci-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  verdict:
+    name: PR verdict
+    needs: [tests, build]
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      TEST_RESULT: ${{ needs.tests.result }}
+      BUILD_RESULT: ${{ needs.build.result }}
+
+    steps:
+      - name: Report results
+        run: |
+          {
+            echo "## Notch CI results"
+            echo ""
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| Regression tests | $TEST_RESULT |"
+            echo "| Release build and packaging | $BUILD_RESULT |"
+            echo ""
+            echo "Live playback, Bluetooth, Accessibility permissions,"
+            echo "memory leaks, and visual placement require Mac testing."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$TEST_RESULT" != "success" ||
+                "$BUILD_RESULT" != "success" ]]; then
+            echo "::error::Notch checks failed. Review the failed job and logs."
+            exit 1
+          fi
+
+          echo "Build and automated checks passed."
