@@ -30,3 +30,8 @@ for (width, height) in [(320, 180), (180, 320), (180, 180)] {
     precondition(corner.blueComponent > 0.95 && corner.redComponent < 0.05, "Side background must be removed")
 }
 print("Passed 6 square-artwork checks: landscape, portrait, square, and background removal")
+
+let precise = decode(#"{"type":"data","diff":false,"payload":{"title":"Music","playing":true,"durationMicros":120000000,"elapsedTimeMicros":24400000,"timestampEpochMicros":1760000000250000,"playbackRate":1}}"#)!
+precondition(precise.duration == 120)
+precondition(abs(precise.position(at: Date(timeIntervalSince1970: 1760000000.85)) - 25) < 0.001)
+print("Passed precise playback position checks")

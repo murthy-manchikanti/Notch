@@ -67,8 +67,7 @@
           ],
         },
       ],
-    },
-    {
+    }, {
       "kind": "group",
       "name": "Frameworks",
       "children": [
@@ -122,6 +121,7 @@
         "ENABLE_APP_SANDBOX": "NO",
         "ENABLE_PREVIEWS": "YES",
         "GENERATE_INFOPLIST_FILE": "YES",
+        "INFOPLIST_KEY_LSApplicationCategoryType": "public.app-category.utilities",
         "INFOPLIST_KEY_LSUIElement": "YES",
         "INFOPLIST_KEY_NSHumanReadableCopyright": "",
         "LD_RUNPATH_SEARCH_PATHS": [
@@ -137,6 +137,7 @@
         "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
         "SWIFT_DEFAULT_ACTOR_ISOLATION": "MainActor",
         "SWIFT_EMIT_LOC_STRINGS": "YES",
+        "SWIFT_INCLUDE_PATHS": "$(SRCROOT)/Modules/NotchCUPS",
         "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
         "SWIFT_VERSION": "5.0",
       },
@@ -249,6 +250,7 @@
     "MTL_ENABLE_DEBUG_INFO[config=Debug]": "INCLUDE_SOURCE",
     "MTL_ENABLE_DEBUG_INFO[config=Release]": "NO",
     "MTL_FAST_MATH": "YES",
+    "ARCHS": "arm64",
     "ONLY_ACTIVE_ARCH[config=Debug]": "YES",
     "SDKROOT": "macosx",
     "SWIFT_ACTIVE_COMPILATION_CONDITIONS[config=Debug]": "DEBUG $(inherited)",

@@ -1,0 +1,5 @@
+module NotchCUPS [system] {
+    header "CUPS.h"
+    link "cups"
+    export *
+}

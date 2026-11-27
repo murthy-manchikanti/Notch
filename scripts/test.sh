@@ -14,3 +14,4 @@ run_test NowPlaying Notch/Sources/Notch/SystemNowPlaying.swift
 run_test SystemStatus Notch/Sources/Notch/SystemStatus.swift
 run_test Playback Notch/Sources/Notch/SystemNowPlaying.swift Notch/Sources/Notch/PlaybackControls.swift Notch/Sources/Notch/ThemedSlider.swift
 run_test Sliders Notch/Sources/Notch/ThemedSlider.swift Notch/Sources/Notch/NotchTheme.swift
+run_test LiveActivity -I Modules/NotchCUPS Notch/Sources/Notch/PrintActivity.swift Notch/Sources/Notch/MenuSpacePolicy.swift Notch/Sources/Notch/ReleaseUpdate.swift

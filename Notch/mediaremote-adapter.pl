@@ -197,6 +197,9 @@ elsif ($function_name eq "stream") {
     if ($key eq "no-diff") {
       set_env_option($options, $key);
     }
+    elsif ($key eq "refresh-position") {
+      set_env_option($options, $key);
+    }
     elsif ($key eq "debounce") {
       set_env_option_value($options, $key);
     }

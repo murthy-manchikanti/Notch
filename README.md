@@ -8,6 +8,18 @@ Open `Notch.xcodeproj`, select the **Notch** scheme and **My Mac**, then build a
 
 The shared project uses Xcode's `project.xcproj` format and was validated using Xcode 27.2. Older Xcode versions may not support this project format.
 
+### Local toolchain on Apple silicon
+
+Use **My Mac** for local runs and **Product → Archive** to archive the app. Debug, Release, and CI build for Apple silicon (arm64) only. If Xcode offers standard architectures, choose **Build** to keep arm64.
+
+If selecting Xcode as the system developer directory makes `git` fail with an `arm64e` error from `libxcrun`, use the standalone Command Line Tools for Terminal and Homebrew. Check the selection with `xcode-select -p`. You can still build from the Xcode app or invoke its build tool directly:
+
+```sh
+/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild \
+  -project Notch.xcodeproj -scheme Notch -configuration Debug \
+  -destination 'platform=macOS,arch=arm64' build
+```
+
 ## Checks
 
 Run `zsh scripts/test.sh` for the standalone regression checks. Keep Xcode's Main Thread Checker enabled when checking Accessibility menu placement. Console logging is not suppressed by the shared scheme.

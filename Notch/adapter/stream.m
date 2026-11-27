@@ -491,7 +491,27 @@ extern void adapter_stream(void) {
 
     g_mediaRemote.registerForNowPlayingNotifications(g_serialdispatchQueue);
 
+    // Some players do not notify MediaRemote subscribers on every seek.
+    dispatch_source_t positionTimer = nil;
+    if (getEnvOption(@"refresh_position") != nil) {
+        positionTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+                                               g_serialdispatchQueue);
+        dispatch_source_set_timer(positionTimer,
+                                  dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC),
+                                  NSEC_PER_SEC, 100 * NSEC_PER_MSEC);
+        dispatch_source_set_event_handler(positionTimer, ^{
+          if (liveData[kMRATitle] != nil) {
+              requestNowPlayingInfo();
+          }
+        });
+        dispatch_resume(positionTimer);
+    }
+
     CFRunLoopRun();
+
+    if (positionTimer != nil) {
+        dispatch_source_cancel(positionTimer);
+    }
 
     g_mediaRemote.unregisterForNowPlayingNotifications();
 
