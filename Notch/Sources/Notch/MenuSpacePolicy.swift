@@ -63,3 +63,16 @@ enum MenuSpacePolicy {
         return space < (wasCrowded ? 46 : 38)
     }
 }
+
+enum PrintIndicatorSide: CaseIterable {
+    case left
+    case right
+
+    func frame(centerX: CGFloat, rowTop: CGFloat, notchWidth: CGFloat, rowHeight: CGFloat) -> CGRect {
+        let height = min(22, max(1, rowHeight - 8))
+        let edge = notchWidth / 2 + 8
+        let width: CGFloat = self == .left ? 54 : 27
+        let x = centerX + (self == .left ? -edge - width : edge)
+        return CGRect(x: x, y: rowTop + (rowHeight - height) / 2, width: width, height: height)
+    }
+}

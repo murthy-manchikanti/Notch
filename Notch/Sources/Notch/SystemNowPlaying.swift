@@ -47,14 +47,21 @@ enum NowPlayingDecoder {
     }
 
     static func decode(_ data: Data) -> NowPlayingTrack? {
-        guard let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              envelope["type"] as? String == "data",
+        guard let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return decode(envelope, reusing: nil, previousArtwork: nil)
+    }
+
+    static func decode(_ envelope: [String: Any], reusing previous: NowPlayingTrack?, previousArtwork: String?) -> NowPlayingTrack? {
+        guard envelope["type"] as? String == "data",
               envelope["diff"] as? Bool == false,
               let payload = envelope["payload"] as? [String: Any],
               let playing = payload["playing"] as? Bool,
               let title = payload["title"] as? String, !title.isEmpty else { return nil }
+        let artworkData = payload["artworkData"] as? String
         var image: NSImage?
-        if let base64 = payload["artworkData"] as? String,
+        if let previous, artworkData == previousArtwork {
+            image = previous.artwork
+        } else if let base64 = artworkData,
            let bytes = Data(base64Encoded: base64),
            let source = CGImageSourceCreateWithData(bytes as CFData, nil),
            let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
@@ -64,9 +71,11 @@ enum NowPlayingDecoder {
            ] as CFDictionary), let square = squareArtwork(thumbnail) {
             image = NSImage(cgImage: square, size: .zero)
         }
-        let duration = (payload["duration"] as? Double).flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 0
-        let elapsed = (payload["elapsedTime"] as? Double).flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
-        let timestamp = (payload["timestamp"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
+        let duration = ((payload["durationMicros"] as? Double).map { $0 / 1_000_000 } ?? payload["duration"] as? Double).flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 0
+        let elapsed = ((payload["elapsedTimeMicros"] as? Double).map { $0 / 1_000_000 } ?? payload["elapsedTime"] as? Double).flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+        let timestamp = (payload["timestampEpochMicros"] as? Double)
+            .flatMap { $0.isFinite ? Date(timeIntervalSince1970: $0 / 1_000_000) : nil }
+            ?? (payload["timestamp"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) } ?? Date()
         let rate = (payload["playbackRate"] as? Double).flatMap { $0.isFinite && $0 >= 0 ? $0 : nil } ?? (playing ? 1 : 0)
         let id = [payload["bundleIdentifier"] as? String ?? "", payload["uniqueIdentifier"] as? String ?? payload["contentItemIdentifier"] as? String ?? "", title, payload["artist"] as? String ?? ""].joined(separator: "|")
         return NowPlayingTrack(title: title, artist: payload["artist"] as? String ?? "Now playing", artwork: image, playing: playing,
@@ -83,6 +92,9 @@ final class NowPlayingMonitor {
     private var commands: [Process] = []
     private var output: Pipe?
     private var buffer = Data()
+    private var lastLine: Data?
+    private var lastTrack: NowPlayingTrack?
+    private var lastArtwork: String?
     private let update: (NowPlayingTrack?) -> Void
     var status: ((String) -> Void)?
 
@@ -100,7 +112,7 @@ final class NowPlayingMonitor {
         let process = Process()
         let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        process.arguments = [script.path, framework.path, "stream", "--no-diff", "--debounce=100"]
+        process.arguments = [script.path, framework.path, "stream", "--no-diff", "--debounce=40", "--micros", "--refresh-position"]
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
         pipe.fileHandleForReading.readabilityHandler = { [weak self] handle in
@@ -133,8 +145,13 @@ final class NowPlayingMonitor {
         while let end = buffer.firstIndex(of: 10) {
             let line = Data(buffer[..<end])
             buffer.removeSubrange(...end)
-            let track = NowPlayingDecoder.decode(line)
-            publish(track, track == nil ? "No media playing" : (track!.playing ? "System Now Playing" : "Playback paused"))
+            guard line != lastLine,
+                  let envelope = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { continue }
+            lastLine = line
+            let track = NowPlayingDecoder.decode(envelope, reusing: lastTrack, previousArtwork: lastArtwork)
+            lastTrack = track
+            lastArtwork = (envelope["payload"] as? [String: Any])?["artworkData"] as? String
+            publish(track, track.map { $0.playing ? "System Now Playing" : "Playback paused" } ?? "No media playing")
         }
     }
 
